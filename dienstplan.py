@@ -18,6 +18,9 @@ import pdfplumber
 import openpyxl
 import datetime as dt
 import subprocess
+import socket
+import threading
+import http.server
 from datetime import datetime, timedelta, date
 import pytz
 
@@ -549,6 +552,50 @@ def ask_and_save_shift(shift_key: str, config_path: Path, config: dict):
     return True
 
 
+def serve_ics(ics_path: Path, port: int = 8765):
+    """
+    Startet einen temporären HTTP-Server damit das iPhone die .ics Datei
+    direkt in Safari öffnen kann. iPhone und PC müssen im gleichen WLAN sein.
+    """
+    # Lokale IP ermitteln
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(('8.8.8.8', 80))
+        local_ip = s.getsockname()[0]
+    finally:
+        s.close()
+
+    url = f"http://{local_ip}:{port}/{ics_path.name}"
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=str(ics_path.parent), **kwargs)
+        def log_message(self, *args):
+            pass  # Logs unterdrücken
+
+    server = http.server.HTTPServer(('', port), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    print()
+    print("  ============================================")
+    print("  iPhone-Import via Safari")
+    print("  ============================================")
+    print()
+    print("  1. iPhone und PC im gleichen WLAN")
+    print("  2. Safari auf dem iPhone oeffnen")
+    print("  3. Diese Adresse eingeben:")
+    print()
+    print(f"     {url}")
+    print()
+    print("  4. Datei laedt herunter")
+    print("  5. 'Zum Kalender hinzufuegen' tippen")
+    print()
+    print("  Enter druecken wenn fertig...")
+    input()
+    server.shutdown()
+
+
 def push_config(config_path: Path, new_keys: list):
     """Committet und pusht config.yaml mit den neu hinzugefügten Diensten."""
     repo_dir = config_path.parent
@@ -604,6 +651,12 @@ def main():
     debug = '--debug' in sys.argv
     alle  = '--alle'  in sys.argv
     scan  = '--scan'  in sys.argv
+    serve = '--serve' in sys.argv
+
+    # --serve: direkt eine .ics Datei bereitstellen (kein PDF/Excel nötig)
+    if serve and args:
+        serve_ics(Path(args[0]))
+        sys.exit(0)
 
     if not args:
         print("Verwendung: python dienstplan.py <datei.pdf|xlsx> [\"Name\"] [--alle] [--debug]")
