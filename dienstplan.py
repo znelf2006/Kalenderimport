@@ -19,6 +19,9 @@ import openpyxl
 import datetime as dt
 import subprocess
 from datetime import datetime, timedelta, date
+from zoneinfo import ZoneInfo
+
+BERLIN = ZoneInfo('Europe/Berlin')
 from icalendar import Calendar, Event
 from pathlib import Path
 
@@ -65,7 +68,7 @@ def parse_time(time_str: str) -> tuple:
 
 def make_datetime(d: date, time_str: str) -> datetime:
     h, m = parse_time(time_str)
-    return datetime(d.year, d.month, d.day, h, m)
+    return datetime(d.year, d.month, d.day, h, m, tzinfo=BERLIN)
 
 
 def extract_schedule(pdf_path: Path, name: str, debug: bool = False) -> tuple:
