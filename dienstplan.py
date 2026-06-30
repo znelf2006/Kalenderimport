@@ -187,6 +187,7 @@ def build_event(d: date, name: str, start_str: str, end_str: str, next_day: bool
     event.add('dtstart', make_datetime(d, start_str))
     end_date = d + timedelta(days=1) if next_day else d
     event.add('dtend', make_datetime(end_date, end_str))
+    event.add('dtstamp', datetime.utcnow())
     event.add('uid', str(uuid.uuid4()))
     return event
 
@@ -203,6 +204,7 @@ def create_events(day: int, month: int, year: int, shift_info: dict, config: dic
         event.add('summary', f'Dienst: {shift_key}')
         event.add('dtstart', d)
         event.add('dtend', d + timedelta(days=1))
+        event.add('dtstamp', datetime.utcnow())
         event.add('uid', str(uuid.uuid4()))
         return [event]
 
@@ -575,6 +577,8 @@ def save_ics(file_path: Path, name: str, month: int, year: int,
     cal.add('prodid', '-//Dienstplan Kalender//DE')
     cal.add('version', '2.0')
     cal.add('calscale', 'GREGORIAN')
+    cal.add('method', 'PUBLISH')
+    cal.add('x-wr-calname', f'{prefix} {name}')
 
     event_count = 0
     for day in sorted(schedule.keys()):
