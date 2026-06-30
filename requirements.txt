@@ -1,0 +1,4 @@
+pdfplumber
+icalendar
+PyYAML
+openpyxl

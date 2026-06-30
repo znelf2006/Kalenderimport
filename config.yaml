@@ -1,0 +1,75 @@
+﻿# Dein Name exakt wie er im Dienstplan steht (Nachname, Vorname)
+name: "Mangels, Nils"
+
+# Dienst-Definitionen
+# next_day: true bedeutet, das Ende ist am Folgetag
+# skip: true bedeutet, kein Kalendereintrag wird erstellt
+shifts:
+
+  "PPK":
+    name: "PPK"
+    start: "07:15"
+    end: "15:45"
+
+  "1 FT":
+    name: "Fast Track OP"
+    start: "07:15"
+    end: "15:45"
+
+  "1 K":
+    name: "Kardiosaal"
+    start: "07:15"
+    end: "15:45"
+
+  # k+K erzeugt ZWEI Kalendereintraege: Regeldienst + Rufdienst
+  "k+K":
+    entries:
+      - name: "Kardiosaal"
+        start: "07:15"
+        end: "15:45"
+      - name: "Kardio-Rufdienst"
+        start: "15:45"
+        end: "08:00"
+        next_day: true
+
+  "1 PP":
+    name: "Privatvertreter"
+    start: "07:15"
+    end: "15:45"
+
+  # KRD hat unterschiedliche Zeiten an Wochentagen vs. Wochenende
+  "KRD":
+    name: "Kardiorufdienst"
+    weekday:
+      start: "15:45"
+      end: "08:00"
+      next_day: true
+    weekend:
+      start: "09:00"
+      end: "08:00"
+      next_day: true
+
+  "1 ZT":
+    name: "Zwischenfalltraining"
+    start: "10:00"
+    end: "18:00"
+
+  "OSB":
+    name: "OA Bereitschaftsdienst"
+    start: "15:25"
+    end: "08:00"
+    next_day: true
+
+  # BF = kein Kalendereintrag
+  "BF":
+    skip: true
+
+  "O":
+    name: "OA Regeldienst OP"
+    start: "07:15"
+    end: "15:45"
+
+  "OA":
+    name: "OA Intensiv"
+    start: "07:00"
+    end: "15:45"
