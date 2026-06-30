@@ -17,6 +17,7 @@ import yaml
 import pdfplumber
 import openpyxl
 import datetime as dt
+import subprocess
 from datetime import datetime, timedelta, date
 from icalendar import Calendar, Event
 from pathlib import Path
@@ -540,6 +541,23 @@ def ask_and_save_shift(shift_key: str, config_path: Path, config: dict):
         f.write(yaml_block)
 
     print(f"  Gespeichert: '{shift_key}' -> {label}")
+    return True
+
+
+def push_config(config_path: Path, new_keys: list):
+    """Committet und pusht config.yaml mit den neu hinzugefügten Diensten."""
+    repo_dir = config_path.parent
+    keys_str = ', '.join(new_keys)
+    try:
+        subprocess.run(['git', 'add', str(config_path)], cwd=repo_dir, check=True)
+        subprocess.run(
+            ['git', 'commit', '-m', f'config: neue Dienste ergaenzt ({keys_str})'],
+            cwd=repo_dir, check=True
+        )
+        subprocess.run(['git', 'push'], cwd=repo_dir, check=True)
+        print(f"\n  config.yaml gepusht ({keys_str})")
+    except subprocess.CalledProcessError as e:
+        print(f"\n  Hinweis: Git-Push fehlgeschlagen ({e}) – config.yaml wurde lokal gespeichert.")
 
 
 def name_to_filename(name: str) -> str:
@@ -636,10 +654,14 @@ def main():
                 for key in find_unknown_shifts(sched, config):
                     all_unknown.add(key)
 
+        new_keys = []
         if all_unknown:
             print(f"\n{len(all_unknown)} unbekannte(s) Kuerzel gefunden.\n")
             for key in sorted(all_unknown):
                 ask_and_save_shift(key, config_path, config)
+                new_keys.append(key)
+        if new_keys:
+            push_config(config_path, new_keys)
 
         print()
         ok = skip = 0
@@ -685,11 +707,15 @@ def main():
         sys.exit(1)
 
     # Unbekannte Kuerzel abfragen
-    unknown = find_unknown_shifts(schedule, config)
+    unknown  = find_unknown_shifts(schedule, config)
+    new_keys = []
     if unknown:
         print(f"\n{len(unknown)} unbekannte(s) Kuerzel gefunden:")
         for key in unknown:
             ask_and_save_shift(key, config_path, config)
+            new_keys.append(key)
+    if new_keys:
+        push_config(config_path, new_keys)
 
     MONATE = {1:'Januar', 2:'Februar', 3:'März',   4:'April',
               5:'Mai',    6:'Juni',    7:'Juli',    8:'August',
