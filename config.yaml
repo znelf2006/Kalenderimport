@@ -1,5 +1,5 @@
 ﻿# Dein Name exakt wie er im Dienstplan steht (Nachname, Vorname)
-name: "Mangels, Nils"
+name: "Duschanek"
 
 # Dienst-Definitionen
 # next_day: true bedeutet, das Ende ist am Folgetag
@@ -72,4 +72,57 @@ shifts:
   "OA":
     name: "OA Intensiv"
     start: "07:00"
+    end: "15:45"
+
+  "OA+B":
+    name: "OA BD wochenende"
+    start: "14:30"
+    end: "08:00"
+    next_day: true
+
+  "N1":
+    name: "NEF 36 Tag"
+    start: "7:52"
+    end: "20:08"
+
+  "OW":
+    name: "Visitendienst"
+    start: "7:15"
+    end: "15:45"
+
+  "U":
+    skip: true
+
+  "Z1":
+    name: "FD ZOP"
+    start: "7:15"
+    end: "15:45"
+
+  "Z3":
+    name: "SD ZOP"
+    start: "11:00"
+    end: "19:30"
+
+  "SB":
+    name: "BD OP"
+    start: "15:15"
+    end: "7:45"
+    next_day: true
+
+  "5ITS":
+    name: "ZD ITS"
+    start: "7:45"
+    end: "16:15"
+
+  "WeT_":
+    name: "Tagdienst Wochenende"
+    start: "7:30"
+    end: "20:00"
+
+  "AF":
+    skip: true
+
+  "1ITS_":
+    name: "FD ITS"
+    start: "6:30"
     end: "15:45"
