@@ -489,6 +489,59 @@ def find_all_names(pdf_path: Path) -> list:
     return sorted(names)
 
 
+def find_unknown_shifts(schedule: dict, config: dict) -> list:
+    known = set(config.get('shifts', {}).keys())
+    seen, unknown = set(), []
+    for info in schedule.values():
+        key = info['shift']
+        if key not in known and key not in seen:
+            unknown.append(key)
+            seen.add(key)
+    return unknown
+
+
+def ask_and_save_shift(shift_key: str, config_path: Path, config: dict):
+    """Fragt interaktiv nach Zeiten für ein unbekanntes Kürzel und speichert es in config.yaml."""
+    print(f"\n  Unbekanntes Kuerzel gefunden: '{shift_key}'")
+    print("  ----------------------------------------")
+
+    skip = input("  Kein Kalendereintrag erstellen? (j/n) [n]: ").strip().lower()
+
+    if skip == 'j':
+        new_def = {'skip': True}
+        yaml_block = f'\n  "{shift_key}":\n    skip: true\n'
+        label = "(kein Eintrag)"
+    else:
+        disp_name = input(f"  Bezeichnung [{shift_key}]: ").strip() or shift_key
+        start     = input( "  Startzeit (HH:MM)     [07:15]: ").strip() or "07:15"
+        end       = input( "  Endzeit   (HH:MM)     [15:45]: ").strip() or "15:45"
+        next_d    = input( "  Endet am Folgetag?    (j/n) [n]: ").strip().lower() == 'j'
+
+        new_def = {'name': disp_name, 'start': start, 'end': end}
+        if next_d:
+            new_def['next_day'] = True
+
+        lines = [
+            f'\n  "{shift_key}":',
+            f'    name: "{disp_name}"',
+            f'    start: "{start}"',
+            f'    end: "{end}"',
+        ]
+        if next_d:
+            lines.append('    next_day: true')
+        yaml_block = '\n'.join(lines) + '\n'
+        label = f"{start}-{end}" + (" (+1 Tag)" if next_d else "")
+
+    # In Laufzeit-Config eintragen
+    config.setdefault('shifts', {})[shift_key] = new_def
+
+    # An config.yaml anhaengen
+    with open(config_path, 'a', encoding='utf-8') as f:
+        f.write(yaml_block)
+
+    print(f"  Gespeichert: '{shift_key}' -> {label}")
+
+
 def name_to_filename(name: str) -> str:
     """'Mangels, Nils' -> 'Mangels_Nils'"""
     return re.sub(r'[^\w]', '_', name).strip('_')
@@ -571,14 +624,32 @@ def main():
         print()
 
         output_dir = file_path.parent
+
+        # Alle unbekannten Kuerzel vorab sammeln und einmalig abfragen
+        print("Pruefe auf unbekannte Kuerzel...")
+        all_unknown = set()
+        all_schedules = {}
+        for n in names:
+            sched, month, year = extract_fn(file_path, n)
+            all_schedules[n] = (sched, month, year)
+            if sched:
+                for key in find_unknown_shifts(sched, config):
+                    all_unknown.add(key)
+
+        if all_unknown:
+            print(f"\n{len(all_unknown)} unbekannte(s) Kuerzel gefunden.\n")
+            for key in sorted(all_unknown):
+                ask_and_save_shift(key, config_path, config)
+
+        print()
         ok = skip = 0
         for n in names:
-            schedule, month, year = extract_fn(file_path, n)
-            if not schedule or not month:
+            sched, month, year = all_schedules[n]
+            if not sched or not month:
                 print(f"  {n}: keine Dienste, uebersprungen")
                 skip += 1
                 continue
-            output_path, count = save_ics(file_path, n, month, year, schedule, config, output_dir, filename_prefix)
+            output_path, count = save_ics(file_path, n, month, year, sched, config, output_dir, filename_prefix)
             print(f"  {n}: {count} Eintraege -> {output_path.name}")
             ok += 1
 
@@ -612,6 +683,13 @@ def main():
     if not month or not year:
         print("Fehler: Monat/Jahr konnte nicht gelesen werden.")
         sys.exit(1)
+
+    # Unbekannte Kuerzel abfragen
+    unknown = find_unknown_shifts(schedule, config)
+    if unknown:
+        print(f"\n{len(unknown)} unbekannte(s) Kuerzel gefunden:")
+        for key in unknown:
+            ask_and_save_shift(key, config_path, config)
 
     MONATE = {1:'Januar', 2:'Februar', 3:'März',   4:'April',
               5:'Mai',    6:'Juni',    7:'Juli',    8:'August',
