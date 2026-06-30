@@ -505,9 +505,9 @@ def ask_and_save_shift(shift_key: str, config_path: Path, config: dict):
     print(f"\n  Unbekanntes Kuerzel gefunden: '{shift_key}'")
     print("  ----------------------------------------")
 
-    skip = input("  Kein Kalendereintrag erstellen? (j/n) [n]: ").strip().lower()
+    create = input("  Kalendereintrag erstellen? (j/n) [j]: ").strip().lower() or 'j'
 
-    if skip == 'j':
+    if create != 'j':
         new_def = {'skip': True}
         yaml_block = f'\n  "{shift_key}":\n    skip: true\n'
         label = "(kein Eintrag)"
