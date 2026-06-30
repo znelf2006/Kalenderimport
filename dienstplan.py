@@ -582,12 +582,14 @@ def save_ics(file_path: Path, name: str, month: int, year: int,
             cal.add_component(event)
             event_count += 1
 
-    filename = f"{prefix}_{name_to_filename(name)}_{MONATE[month]}{year}.ical"
-    output_path = output_dir / filename
-    with open(output_path, 'wb') as f:
-        f.write(cal.to_ical())
+    ical_data = cal.to_ical()
+    base = f"{prefix}_{name_to_filename(name)}_{MONATE[month]}{year}"
 
-    return output_path, event_count
+    for ext in ('.ical', '.ics'):
+        with open(output_dir / (base + ext), 'wb') as f:
+            f.write(ical_data)
+
+    return output_dir / (base + '.ics'), event_count
 
 
 def main():
