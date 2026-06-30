@@ -565,13 +565,14 @@ def serve_ics(ics_path: Path, port: int = 8765):
     finally:
         s.close()
 
-    url = f"http://{local_ip}:{port}/{ics_path.name}"
+    http_url  = f"http://{local_ip}:{port}/{ics_path.name}"
+    webcal_url = f"webcal://{local_ip}:{port}/{ics_path.name}"
 
     class Handler(http.server.SimpleHTTPRequestHandler):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, directory=str(ics_path.parent), **kwargs)
         def log_message(self, *args):
-            pass  # Logs unterdrücken
+            pass
 
     server = http.server.HTTPServer(('', port), Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -582,16 +583,21 @@ def serve_ics(ics_path: Path, port: int = 8765):
     print("  iPhone-Import via Safari")
     print("  ============================================")
     print()
-    print("  1. iPhone und PC im gleichen WLAN")
-    print("  2. Safari auf dem iPhone oeffnen")
-    print("  3. Diese Adresse eingeben:")
+    print("  Voraussetzung: iPhone im gleichen WLAN wie dieser PC")
     print()
-    print(f"     {url}")
+    print("  Schritt 1 - Safari oeffnen und DIESE Adresse eingeben:")
     print()
-    print("  4. Datei laedt herunter")
-    print("  5. 'Zum Kalender hinzufuegen' tippen")
+    print(f"     {webcal_url}")
     print()
-    print("  Enter druecken wenn fertig...")
+    print("  --> Kalender-App oeffnet sich automatisch")
+    print()
+    print("  Falls das nicht klappt, Alternative mit http://:")
+    print(f"     {http_url}")
+    print("  --> Datei wird heruntergeladen, dann antippen")
+    print()
+    print("  Fuer Kollegen: gleiche URL, sie brauchen nur Safari")
+    print()
+    print("  Enter druecken zum Beenden des Servers...")
     input()
     server.shutdown()
 
