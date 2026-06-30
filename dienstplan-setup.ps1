@@ -171,7 +171,12 @@ if ($LASTEXITCODE -ne 0) {
     Write-Host "  Name nicht gefunden oder Fehler. Starte Debug-Modus..." -ForegroundColor Yellow
     Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
     Write-Host ""
-    python $PythonScript $pdfPath $name --debug
+    $ext = [System.IO.Path]::GetExtension($pdfPath).ToLower()
+    if ($ext -eq ".xlsx" -or $ext -eq ".xls" -or $ext -eq ".xlsm") {
+        python $PythonScript $pdfPath --scan
+    } else {
+        python $PythonScript $pdfPath $name --debug
+    }
     Write-Host ""
     Read-Host "  Enter druecken zum Beenden"
     exit 1

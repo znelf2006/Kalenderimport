@@ -16,6 +16,7 @@ import uuid
 import yaml
 import pdfplumber
 import openpyxl
+import datetime as dt
 from datetime import datetime, timedelta, date
 from icalendar import Calendar, Event
 from pathlib import Path
@@ -225,12 +226,37 @@ def create_events(day: int, month: int, year: int, shift_info: dict, config: dic
     return [build_event(d, defn['name'], defn['start'], defn['end'], defn.get('next_day', False))]
 
 
+def scan_excel(excel_path: Path):
+    """Zeigt rohe Zellwerte der ersten 12 Zeilen und Spalten A-P zur Diagnose."""
+    wb = openpyxl.load_workbook(excel_path, data_only=True)
+    ws = wb.active
+    print(f"\nAktives Tabellenblatt: '{ws.title}'")
+    print(f"Blätter: {wb.sheetnames}\n")
+    print("Erste 12 Zeilen (Wert | Typ):\n")
+    for r in range(1, min(13, ws.max_row + 1)):
+        row_info = []
+        for c in range(1, min(18, ws.max_column + 1)):
+            val = ws.cell(row=r, column=c).value
+            if val is not None:
+                row_info.append(f"[{openpyxl.utils.get_column_letter(c)}{r}] {repr(val)[:25]}")
+        if row_info:
+            print(f"  Zeile {r:2d}: " + "  |  ".join(row_info[:6]))
+        else:
+            print(f"  Zeile {r:2d}: (leer)")
+    print()
+
+
 def extract_schedule_excel(excel_path: Path, name: str, debug: bool = False) -> tuple:
     """
     Extrahiert Dienste aus der Excel-Vordienstplan-Datei.
-    Layout variiert monatlich: Kopfzeile mit Tageszahlen wird dynamisch gesucht,
-    ebenso die Namensspalte. Kontrollspalten/-zeilen am Rand werden ignoriert.
+
+    Besonderheiten dieses Formats:
+    - Tageszahlen sind datetime-Objekte (datetime(2026, 3, 1) etc.), keine Zahlen
+    - Namen stehen nur als Nachname in Spalte A (kein Komma, kein Vorname)
+    - Monat/Jahr steht als datetime in Zeile 2
+    - Kontrollspalten/-zeilen am Rand werden per Lückenerkennung ignoriert
     """
+    import warnings
     wb = openpyxl.load_workbook(excel_path, data_only=True)
     ws = wb.active
 
@@ -239,56 +265,68 @@ def extract_schedule_excel(excel_path: Path, name: str, debug: bool = False) -> 
     found_month = None
     found_year = None
 
-    # 1. Monat/Jahr aus den ersten Zeilen lesen ("Mrz 26" oder "März 2026")
+    def cell_as_day(val):
+        """Gibt Tageszahl zurück wenn val ein Datum oder eine Zahl 1-31 ist, sonst None."""
+        if isinstance(val, (dt.datetime, dt.date)):
+            return val.day if 1 <= val.day <= 31 else None
+        try:
+            n = int(str(val).strip())
+            return n if 1 <= n <= 31 else None
+        except (ValueError, TypeError):
+            return None
+
+    # 1. Monat/Jahr: datetime-Objekte in den ersten Zeilen auswerten
     for r in range(1, min(8, max_row + 1)):
         for c in range(1, min(max_col + 1, 30)):
             val = ws.cell(row=r, column=c).value
-            if val is None:
-                continue
-            val_str = str(val).strip()
-            # Kurzform: "Mrz 26"
-            m = re.match(r'^(\w{3})\s+(\d{2,4})$', val_str)
-            if m and m.group(1) in MONTH_ABBR_MAP:
-                found_month = MONTH_ABBR_MAP[m.group(1)]
-                y = int(m.group(2))
-                found_year = y + 2000 if y < 100 else y
+            if isinstance(val, (dt.datetime, dt.date)):
+                found_month = val.month
+                found_year  = val.year
                 break
-            # Langform: "März 2026"
-            m2 = re.search(r'(\w+)\s+(\d{4})', val_str)
-            if m2 and m2.group(1) in MONTH_MAP:
-                found_month = MONTH_MAP[m2.group(1)]
-                found_year = int(m2.group(2))
-                break
+            if isinstance(val, str):
+                m = re.match(r'^(\w{3})\s+(\d{2,4})$', val.strip())
+                if m and m.group(1) in MONTH_ABBR_MAP:
+                    found_month = MONTH_ABBR_MAP[m.group(1)]
+                    y = int(m.group(2))
+                    found_year  = y + 2000 if y < 100 else y
+                    break
+                m2 = re.search(r'(\w+)\s+(\d{4})', val.strip())
+                if m2 and m2.group(1) in MONTH_MAP:
+                    found_month = MONTH_MAP[m2.group(1)]
+                    found_year  = int(m2.group(2))
+                    break
         if found_month:
             break
 
-    # 2. Kopfzeile mit Tageszahlen suchen (erste Zeile mit mind. 20 Zahlen 1-31)
+    # 2. Kopfzeile suchen: Zeile mit mind. 20 Datumswerten (Tag 1–31)
     header_row = None
-    col_to_day = {}
+    col_to_day  = {}
 
     for r in range(1, min(15, max_row + 1)):
         temp = {}
         for c in range(1, max_col + 1):
-            val = ws.cell(row=r, column=c).value
-            if val is None:
-                continue
-            try:
-                day_num = int(str(val).strip())
-                if 1 <= day_num <= 31:
-                    temp[c] = day_num
-            except (ValueError, TypeError):
-                pass
+            d_num = cell_as_day(ws.cell(row=r, column=c).value)
+            if d_num is not None:
+                temp[c] = d_num
+                # Monat/Jahr aus Datumszelle holen falls noch nicht bekannt
+                if not found_month:
+                    val = ws.cell(row=r, column=c).value
+                    if isinstance(val, (dt.datetime, dt.date)):
+                        found_month = val.month
+                        found_year  = val.year
+
         if len(temp) >= 20:
             header_row = r
-            # Nur zusammenhängende Tagesspalten übernehmen (Lücken > 2 Spalten = Ende)
-            sorted_cols = sorted(temp.keys())
-            for i, c in enumerate(sorted_cols):
-                if i > 0 and c - sorted_cols[i - 1] > 3:
-                    break  # Lücke nach Tag 31 → Kontrollspalten beginnen
+            # Zusammenhängende Tagesspalten (Lücke > 3 = Kontrollspalten)
+            for i, c in enumerate(sorted(temp.keys())):
+                prev = sorted(temp.keys())[i - 1] if i > 0 else c
+                if i > 0 and c - prev > 3:
+                    break
                 col_to_day[c] = temp[c]
             if debug:
                 print(f"  Kopfzeile: Zeile {header_row}, {len(col_to_day)} Tage "
-                      f"(Spalten {min(col_to_day)}-{max(col_to_day)})")
+                      f"(Spalten {openpyxl.utils.get_column_letter(min(col_to_day))}"
+                      f"–{openpyxl.utils.get_column_letter(max(col_to_day))})")
             break
 
     if not header_row or not col_to_day:
@@ -296,30 +334,19 @@ def extract_schedule_excel(excel_path: Path, name: str, debug: bool = False) -> 
             print("  Keine Tages-Kopfzeile gefunden.")
         return {}, found_month, found_year
 
-    # 3. Namensspalte bestimmen: Spalte links neben den Tagesspalten, die Textnamen enthält
+    # 3. Namensspalte: linkeste Spalte mit Textwerten (Namen ohne Komma möglich)
     first_day_col = min(col_to_day.keys())
     name_col = None
 
-    for c in range(max(1, first_day_col - 6), first_day_col):
-        hits = 0
-        for r in range(header_row + 1, min(header_row + 25, max_row + 1)):
-            val = ws.cell(row=r, column=c).value
-            if isinstance(val, str) and len(val.strip()) > 2 and ',' in val:
-                hits += 1
-        if hits >= 3:
+    for c in range(1, first_day_col):
+        hits = sum(
+            1 for r in range(header_row + 1, min(header_row + 25, max_row + 1))
+            if isinstance(ws.cell(row=r, column=c).value, str)
+            and len(ws.cell(row=r, column=c).value.strip()) >= 2
+        )
+        if hits >= 5:
             name_col = c
             break
-
-    # Fallback: einfach A oder B scannen
-    if name_col is None:
-        for c in [1, 2, 3]:
-            for r in range(header_row + 1, min(header_row + 25, max_row + 1)):
-                val = ws.cell(row=r, column=c).value
-                if isinstance(val, str) and ',' in val:
-                    name_col = c
-                    break
-            if name_col:
-                break
 
     if name_col is None:
         if debug:
@@ -329,20 +356,19 @@ def extract_schedule_excel(excel_path: Path, name: str, debug: bool = False) -> 
     if debug:
         print(f"  Namensspalte: {openpyxl.utils.get_column_letter(name_col)}")
 
-    # 4. Person suchen und Dienste auslesen (max. 100 Zeilen nach Kopfzeile)
-    schedule = {}
-    row_limit = min(max_row, header_row + 100)
+    # 4. Person suchen und Dienste auslesen
+    schedule   = {}
+    row_limit  = min(max_row, header_row + 100)
 
     for r in range(header_row + 1, row_limit + 1):
         cell_val = ws.cell(row=r, column=name_col).value
-        if cell_val is None:
+        if not isinstance(cell_val, str):
             continue
-        cell_str = str(cell_val).strip()
-        if name.lower() not in cell_str.lower():
+        if name.lower() not in cell_val.strip().lower():
             continue
 
         if debug:
-            print(f"  Name gefunden: Zeile {r}")
+            print(f"  Name gefunden: Zeile {r} → '{cell_val.strip()}'")
 
         for col, day in col_to_day.items():
             shift_val = ws.cell(row=r, column=col).value
@@ -351,23 +377,21 @@ def extract_schedule_excel(excel_path: Path, name: str, debug: bool = False) -> 
             shift_str = str(shift_val).strip()
             if not shift_str or shift_str in EXCEL_ERRORS:
                 continue
-            # Wochentag aus Datum berechnen (Excel hat keine eigene Wochentag-Zeile)
+            wd = ''
             if found_month and found_year:
                 try:
                     wd = WEEKDAY_NAMES[date(found_year, found_month, day).weekday()]
                 except ValueError:
-                    wd = ''
-            else:
-                wd = ''
+                    pass
             schedule[day] = {'shift': shift_str, 'weekday': wd}
         break
 
     if debug and not schedule:
-        print(f"  Name '{name}' nicht gefunden. Vorhandene Namen (erste 10):")
+        print(f"  '{name}' nicht gefunden. Vorhandene Namen (erste 10):")
         shown = 0
         for r in range(header_row + 1, row_limit + 1):
             val = ws.cell(row=r, column=name_col).value
-            if val and isinstance(val, str) and ',' in val:
+            if isinstance(val, str) and len(val.strip()) >= 2:
                 print(f"    Zeile {r}: '{val.strip()}'")
                 shown += 1
                 if shown >= 10:
@@ -379,24 +403,27 @@ def extract_schedule_excel(excel_path: Path, name: str, debug: bool = False) -> 
 def find_all_names_excel(excel_path: Path) -> list:
     """Gibt alle Namen aus der Excel-Datei zurück."""
     wb = openpyxl.load_workbook(excel_path, data_only=True)
-    ws = wb.active
-    max_row = ws.max_row
-    max_col = ws.max_column
+    ws  = wb.active
+
+    def cell_as_day(val):
+        if isinstance(val, (dt.datetime, dt.date)):
+            return val.day if 1 <= val.day <= 31 else None
+        try:
+            n = int(str(val).strip())
+            return n if 1 <= n <= 31 else None
+        except (ValueError, TypeError):
+            return None
 
     # Kopfzeile finden
-    header_row = None
+    header_row    = None
     first_day_col = None
-    for r in range(1, min(15, max_row + 1)):
-        count = sum(
-            1 for c in range(1, max_col + 1)
-            if _is_day_num(ws.cell(row=r, column=c).value)
-        )
+    for r in range(1, min(15, ws.max_row + 1)):
+        count = sum(1 for c in range(1, ws.max_column + 1)
+                    if cell_as_day(ws.cell(row=r, column=c).value) is not None)
         if count >= 20:
-            header_row = r
-            first_day_col = min(
-                c for c in range(1, max_col + 1)
-                if _is_day_num(ws.cell(row=r, column=c).value)
-            )
+            header_row    = r
+            first_day_col = next(c for c in range(1, ws.max_column + 1)
+                                 if cell_as_day(ws.cell(row=r, column=c).value) is not None)
             break
 
     if not header_row:
@@ -404,34 +431,22 @@ def find_all_names_excel(excel_path: Path) -> list:
 
     # Namensspalte finden
     name_col = None
-    for c in range(max(1, first_day_col - 6), first_day_col):
-        hits = sum(
-            1 for r in range(header_row + 1, min(header_row + 25, max_row + 1))
-            if isinstance(ws.cell(row=r, column=c).value, str)
-            and ',' in ws.cell(row=r, column=c).value
-        )
-        if hits >= 3:
+    for c in range(1, first_day_col):
+        hits = sum(1 for r in range(header_row + 1, min(header_row + 25, ws.max_row + 1))
+                   if isinstance(ws.cell(row=r, column=c).value, str)
+                   and len(ws.cell(row=r, column=c).value.strip()) >= 2)
+        if hits >= 5:
             name_col = c
             break
-
-    if not name_col:
-        for c in [1, 2, 3]:
-            for r in range(header_row + 1, min(header_row + 25, max_row + 1)):
-                val = ws.cell(row=r, column=c).value
-                if isinstance(val, str) and ',' in val:
-                    name_col = c
-                    break
-            if name_col:
-                break
 
     if not name_col:
         return []
 
     names = []
-    seen = set()
-    for r in range(header_row + 1, min(max_row + 1, header_row + 100)):
+    seen  = set()
+    for r in range(header_row + 1, min(ws.max_row + 1, header_row + 100)):
         val = ws.cell(row=r, column=name_col).value
-        if isinstance(val, str) and ',' in val:
+        if isinstance(val, str) and len(val.strip()) >= 2:
             n = val.strip()
             if n not in seen:
                 seen.add(n)
@@ -479,8 +494,9 @@ def name_to_filename(name: str) -> str:
     return re.sub(r'[^\w]', '_', name).strip('_')
 
 
-def save_ics(pdf_path: Path, name: str, month: int, year: int,
-             schedule: dict, config: dict, output_dir: Path) -> Path:
+def save_ics(file_path: Path, name: str, month: int, year: int,
+             schedule: dict, config: dict, output_dir: Path,
+             prefix: str = 'Dienstplan') -> Path:
     MONATE = {1:'Januar',2:'Februar',3:'März',4:'April',5:'Mai',6:'Juni',
               7:'Juli',8:'August',9:'September',10:'Oktober',11:'November',12:'Dezember'}
 
@@ -495,7 +511,7 @@ def save_ics(pdf_path: Path, name: str, month: int, year: int,
             cal.add_component(event)
             event_count += 1
 
-    filename = f"dienstplan_{name_to_filename(name)}_{MONATE[month]}{year}.ics"
+    filename = f"{prefix}_{name_to_filename(name)}_{MONATE[month]}{year}.ical"
     output_path = output_dir / filename
     with open(output_path, 'wb') as f:
         f.write(cal.to_ical())
@@ -507,6 +523,7 @@ def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     debug = '--debug' in sys.argv
     alle  = '--alle'  in sys.argv
+    scan  = '--scan'  in sys.argv
 
     if not args:
         print("Verwendung: python dienstplan.py <datei.pdf|xlsx> [\"Name\"] [--alle] [--debug]")
@@ -526,9 +543,17 @@ def main():
     config = load_config(config_path)
 
     is_excel = file_path.suffix.lower() in {'.xlsx', '.xls', '.xlsm'}
+
+    if scan:
+        if not is_excel:
+            print("--scan funktioniert nur mit Excel-Dateien.")
+            sys.exit(1)
+        scan_excel(file_path)
+        sys.exit(0)
     extract_fn     = extract_schedule_excel if is_excel else extract_schedule
     find_names_fn  = find_all_names_excel   if is_excel else find_all_names
     filetype_label = "Excel" if is_excel else "PDF"
+    filename_prefix = "Kreuzchenplan" if is_excel else "Gesamtdienstplan"
 
     # --- Modus: alle KollegInnen ---
     if alle:
@@ -553,7 +578,7 @@ def main():
                 print(f"  {n}: keine Dienste, uebersprungen")
                 skip += 1
                 continue
-            output_path, count = save_ics(file_path, n, month, year, schedule, config, output_dir)
+            output_path, count = save_ics(file_path, n, month, year, schedule, config, output_dir, filename_prefix)
             print(f"  {n}: {count} Eintraege -> {output_path.name}")
             ok += 1
 
@@ -601,7 +626,7 @@ def main():
         print(f"  {day:2d}. {wd}  {info['shift']}{marker}")
 
     output_path, event_count = save_ics(
-        file_path, name, month, year, schedule, config, file_path.parent
+        file_path, name, month, year, schedule, config, file_path.parent, filename_prefix
     )
     print(f"\n{event_count} Eintraege erstellt")
     print(f"Datei: {output_path}")
