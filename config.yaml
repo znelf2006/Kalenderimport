@@ -1,5 +1,5 @@
 ﻿# Dein Name exakt wie er im Dienstplan steht (Nachname, Vorname)
-name: "Duschanek"
+name: "Mangels"
 
 # Dienst-Definitionen
 # next_day: true bedeutet, das Ende ist am Folgetag
@@ -125,4 +125,37 @@ shifts:
   "1ITS_":
     name: "FD ITS"
     start: "6:30"
+    end: "15:45"
+
+  "F":
+    skip: true
+
+  "k":
+    name: "Kardiosaal"
+    start: "7:15"
+    end: "15:45"
+
+  "BD":
+    name: "OA Bereitschaftsdienst"
+    start: "15:28"
+    end: "8:00"
+    next_day: true
+
+  "fbd":
+    skip: true
+
+  "ZT":
+    name: "Zwischenfalltraining"
+    start: "10:00"
+    end: "19:00"
+
+  "k/KRD":
+    name: "Kardiosaal und Kardiorufdienst"
+    start: "7:15"
+    end: "8:00"
+    next_day: true
+
+  "PP":
+    name: "Privatvertreter"
+    start: "7:15"
     end: "15:45"
