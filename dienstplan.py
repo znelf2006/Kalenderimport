@@ -13,6 +13,7 @@ Verwendung:
 import sys
 import re
 import uuid
+import json
 import yaml
 import pdfplumber
 import openpyxl
@@ -652,6 +653,36 @@ def save_ics(file_path: Path, name: str, month: int, year: int,
     return output_dir / (base + '.ics'), event_count
 
 
+def save_json(file_path: Path, name: str, month: int, year: int,
+              schedule: dict, config: dict, output_dir: Path,
+              prefix: str = 'Dienstplan') -> Path:
+    MONATE = {1:'Januar',2:'Februar',3:'März',4:'April',5:'Mai',6:'Juni',
+              7:'Juli',8:'August',9:'September',10:'Oktober',11:'November',12:'Dezember'}
+
+    events = []
+    for day in sorted(schedule.keys()):
+        for evt in create_events(day, month, year, schedule[day], config):
+            dt_start = evt.get('dtstart').dt
+            dt_end   = evt.get('dtend').dt
+            events.append({
+                'titel': str(evt.get('summary')),
+                'start': dt_start.strftime('%Y-%m-%dT%H:%M:%S'),
+                'ende':  dt_end.strftime('%Y-%m-%dT%H:%M:%S'),
+            })
+
+    data = {
+        'name':   name,
+        'monat':  f"{MONATE[month]} {year}",
+        'events': events,
+    }
+
+    base = f"{prefix}_{name_to_filename(name)}_{MONATE[month]}{year}"
+    json_path = output_dir / (base + '.json')
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    return json_path
+
+
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith('--')]
     debug = '--debug' in sys.argv
@@ -740,6 +771,7 @@ def main():
                 skip += 1
                 continue
             output_path, count = save_ics(file_path, n, month, year, sched, config, output_dir, filename_prefix)
+            save_json(file_path, n, month, year, sched, config, output_dir, filename_prefix)
             print(f"  {n}: {count} Eintraege -> {output_path.name}")
             ok += 1
 
@@ -800,8 +832,12 @@ def main():
     output_path, event_count = save_ics(
         file_path, name, month, year, schedule, config, file_path.parent, filename_prefix
     )
+    json_path = save_json(
+        file_path, name, month, year, schedule, config, file_path.parent, filename_prefix
+    )
     print(f"\n{event_count} Eintraege erstellt")
     print(f"Datei: {output_path}")
+    print(f"JSON:  {json_path}")
 
 
 if __name__ == '__main__':
