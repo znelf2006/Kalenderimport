@@ -653,6 +653,37 @@ def save_ics(file_path: Path, name: str, month: int, year: int,
     return output_dir / (base + '.ics'), event_count
 
 
+def save_single_ics_files(file_path: Path, name: str, month: int, year: int,
+                          schedule: dict, config: dict, output_dir: Path,
+                          prefix: str = 'Dienstplan') -> tuple:
+    MONATE = {1:'Januar',2:'Februar',3:'März',4:'April',5:'Mai',6:'Juni',
+              7:'Juli',8:'August',9:'September',10:'Oktober',11:'November',12:'Dezember'}
+
+    folder_name = f"{prefix}_{name_to_filename(name)}_{MONATE[month]}{year}_einzeln"
+    folder = output_dir / folder_name
+    folder.mkdir(exist_ok=True)
+
+    count = 0
+    for day in sorted(schedule.keys()):
+        for evt in create_events(day, month, year, schedule[day], config):
+            cal = Calendar()
+            cal.add('prodid', '-//Dienstplan Kalender//DE')
+            cal.add('version', '2.0')
+            cal.add('calscale', 'GREGORIAN')
+            cal.add('method', 'PUBLISH')
+            cal.add_component(evt)
+
+            title = str(evt.get('summary'))
+            safe_title = re.sub(r'[^\w]', '_', title).strip('_')
+            fname = f"{day:02d}_{safe_title}"
+            for ext in ('.ical', '.ics'):
+                with open(folder / (fname + ext), 'wb') as f:
+                    f.write(cal.to_ical())
+            count += 1
+
+    return folder, count
+
+
 def save_json(file_path: Path, name: str, month: int, year: int,
               schedule: dict, config: dict, output_dir: Path,
               prefix: str = 'Dienstplan') -> Path:
@@ -772,6 +803,7 @@ def main():
                 continue
             output_path, count = save_ics(file_path, n, month, year, sched, config, output_dir, filename_prefix)
             save_json(file_path, n, month, year, sched, config, output_dir, filename_prefix)
+            save_single_ics_files(file_path, n, month, year, sched, config, output_dir, filename_prefix)
             print(f"  {n}: {count} Eintraege -> {output_path.name}")
             ok += 1
 
@@ -835,9 +867,13 @@ def main():
     json_path = save_json(
         file_path, name, month, year, schedule, config, file_path.parent, filename_prefix
     )
+    einzeln_folder, einzeln_count = save_single_ics_files(
+        file_path, name, month, year, schedule, config, file_path.parent, filename_prefix
+    )
     print(f"\n{event_count} Eintraege erstellt")
-    print(f"Datei: {output_path}")
-    print(f"JSON:  {json_path}")
+    print(f"Datei (gesamt):   {output_path}")
+    print(f"Einzeldateien:    {einzeln_folder} ({einzeln_count} Dateien)")
+    print(f"JSON (Shortcuts): {json_path}")
 
 
 if __name__ == '__main__':

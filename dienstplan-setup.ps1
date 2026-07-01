@@ -200,33 +200,11 @@ if ($alleKollegen -eq "j") {
     python $PythonScript $pdfPath --alle
 }
 
-# Auf iPhone uebertragen?
+# Ausgabeordner im Explorer oeffnen
+$pdfDir = Split-Path -Parent $pdfPath
 Write-Host ""
-Write-Host "  --------------------------------------------" -ForegroundColor DarkGray
-Write-Host ""
-Write-Host "  Direkt auf iPhone importieren?" -ForegroundColor Yellow
-Write-Host "  (PC und iPhone muessen im gleichen WLAN sein)" -ForegroundColor Gray
-Write-Host ""
-
-$iphone = Ask "  Auf iPhone uebertragen? (j/n)" "n"
-if ($iphone -eq "j") {
-    # Neueste .ics Datei finden
-    $pdfDir = Split-Path -Parent $pdfPath
-    $icsFile = Get-ChildItem -Path $pdfDir -Filter "*.ics" -ErrorAction SilentlyContinue |
-               Sort-Object LastWriteTime -Descending | Select-Object -First 1
-    if ($icsFile) {
-        python $PythonScript --serve $icsFile.FullName
-    } else {
-        Write-Host "  Keine .ics Datei gefunden." -ForegroundColor Red
-    }
-} else {
-    # Ausgabeordner im Explorer oeffnen
-    $pdfDir = Split-Path -Parent $pdfPath
-    $open = Ask "  Ordner mit den Dateien im Explorer oeffnen? (j/n)" "j"
-    if ($open -eq "j") {
-        Start-Process explorer.exe -ArgumentList "`"$pdfDir`""
-    }
-}
+Write-Host "  Oeffne Ordner mit den erstellten Dateien..." -ForegroundColor Gray
+Start-Process explorer.exe -ArgumentList "`"$pdfDir`""
 
 Write-Host ""
 Read-Host "  Enter druecken zum Beenden"
